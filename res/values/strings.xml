@@ -27,4 +27,8 @@
     <string name="inches">Inches</string>
     <string name="screen_resolution">Screen Resolution</string>
     <string name="camera_pixels">Camera Pixels</string>
+    <string name="battery_temperature">Battery Temperature</string>
+    <string name="ambient_temperature">Ambient Temperature</string>
+    <string name="units_of_temperature">°C</string>
+    <string name="not_available">N.A.</string>
 </resources>
