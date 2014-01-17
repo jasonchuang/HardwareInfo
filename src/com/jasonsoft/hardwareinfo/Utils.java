@@ -60,9 +60,7 @@ public class Utils {
         float heightInInches = height / physicalDpiY;
         double diagonalInches = Math.sqrt((heightInInches * heightInInches) + (widhtInInches * widhtInInches));
 
-        NumberFormat nf = NumberFormat.getInstance();
-        nf.setMaximumFractionDigits(1);
-        return nf.format(diagonalInches);
+        return roundOffSize(diagonalInches);
     }
 
     public static String getScreenResolution(DisplayMetrics dm) {
@@ -104,15 +102,22 @@ public class Utils {
         String displaySize;
 
         if (size / ONE_GB > 0) {
-            displaySize = String.valueOf(size / ONE_GB) + " GB";
+            displaySize = roundOffSize((double) size / ONE_GB) + " GP";
         } else if (size / ONE_MB > 0) {
-            displaySize = String.valueOf(size / ONE_MB) + " MB";
+            displaySize = roundOffSize((double) size / ONE_MB) + " MP";
         } else if (size / ONE_KB > 0) {
-            displaySize = String.valueOf(size / ONE_KB) + " KB";
+            displaySize = roundOffSize((double) size / ONE_KB) + " KP";
         } else {
-            displaySize = String.valueOf(size) + " bytes";
+            displaySize = String.valueOf(size) + " pixels";
         }
+
         return displaySize;
+    }
+
+    private static String roundOffSize(double size) {
+        NumberFormat nf = NumberFormat.getInstance();
+        nf.setMaximumFractionDigits(1);
+        return nf.format(size);
     }
 
 }

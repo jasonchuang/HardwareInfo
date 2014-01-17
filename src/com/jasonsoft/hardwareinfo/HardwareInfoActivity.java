@@ -16,9 +16,16 @@
 
 package com.jasonsoft.hardwareinfo;
 
-//import com.android.example.spinner.R;
-
 import android.app.Activity;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
+import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.DisplayMetrics;
@@ -28,9 +35,16 @@ import android.widget.TextView;
  * Displays an Android spinner widget backed by data in an array. The
  * array is loaded from the strings.xml resources file.
  */
-public class HardwareInfoActivity extends Activity {
+public class HardwareInfoActivity extends Activity implements SensorEventListener {
+
     TextView mResultText;
     DisplayMetrics mDisplayMetrics;
+
+    private BroadcastReceiver mBatteryStatusReceiver;
+    private int mBatteryTemperature;
+    private SensorManager mSensorManager;
+    private Sensor mAmbientTemperatureSensor;
+    private int mAmbientTemperature;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -43,6 +57,10 @@ public class HardwareInfoActivity extends Activity {
 
         mDisplayMetrics = new DisplayMetrics();
         getWindowManager().getDefaultDisplay().getMetrics(mDisplayMetrics);
+
+        mBatteryStatusReceiver = new BatteryStatusReceiver();
+        mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+        mAmbientTemperatureSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_AMBIENT_TEMPERATURE);
     }
 
     /**
@@ -54,6 +72,47 @@ public class HardwareInfoActivity extends Activity {
     @Override
     public void onResume() {
         super.onResume();
+        registerReceiver(mBatteryStatusReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        if (mAmbientTemperatureSensor != null) {
+            mSensorManager.registerListener(this, mAmbientTemperatureSensor, SensorManager.SENSOR_DELAY_NORMAL);
+        }
+
+        updateResultText();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        unregisterReceiver(mBatteryStatusReceiver);
+        if (mAmbientTemperatureSensor != null) {
+            mSensorManager.unregisterListener(this);
+        }
+    }
+
+    private final class BatteryStatusReceiver extends BroadcastReceiver {
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (Intent.ACTION_BATTERY_CHANGED.equals(intent.getAction())) {
+                // temperature - int, current battery temperature in tenths of a degree Centigrade
+                mBatteryTemperature = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) / 10;
+                updateResultText();
+            }
+        }
+    }
+
+    @Override
+    public final void onAccuracyChanged(Sensor sensor, int accuracy) {
+        // Do something here if sensor accuracy changes.
+    }
+
+    @Override
+    public final void onSensorChanged(SensorEvent event) {
+        // °C, Ambient air temperature.
+        mAmbientTemperature = (int) event.values[0];
+    }
+
+    private void updateResultText() {
         StringBuffer sb = new StringBuffer();
         sb.append(getString(R.string.brand) + ": " + Build.BRAND);
         sb.append("\n");
@@ -64,7 +123,13 @@ public class HardwareInfoActivity extends Activity {
         sb.append("\n");
         sb.append(getString(R.string.camera_pixels) + ": " + Utils.getCameraPixels());
         sb.append("\n");
-
+        sb.append(getString(R.string.battery_temperature) + ": " + mBatteryTemperature +
+                getString(R.string.units_of_temperature));
+        sb.append("\n");
+        sb.append(getString(R.string.ambient_temperature) + ": " + ((mAmbientTemperatureSensor != null)
+                ? mAmbientTemperature + getString(R.string.units_of_temperature)
+                : getString(R.string.not_available)));
+        sb.append("\n");
         mResultText.setText(sb.toString());
     }
 
