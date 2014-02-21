@@ -46,6 +46,14 @@ public class HardwareInfoActivity extends Activity implements SensorEventListene
     private Sensor mAmbientTemperatureSensor;
     private int mAmbientTemperature;
 
+    static {
+        System.loadLibrary("cpuinfo");
+    }
+
+    public native String getCpuFamilyFromJNI();
+    public native int getCpuCountFromJNI();
+    public native String getCpuFeaturesFromJNI();
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         /**
@@ -116,6 +124,12 @@ public class HardwareInfoActivity extends Activity implements SensorEventListene
         StringBuffer sb = new StringBuffer();
         sb.append(getString(R.string.brand) + ": " + Build.BRAND);
         sb.append("\n");
+        sb.append(getString(R.string.cpu_family) + ": " + getCpuFamilyFromJNI());
+        sb.append("\n");
+        int cpuCount = getCpuCountFromJNI();
+        String cpuCores = getResources().getQuantityString(R.plurals.cpu_cores, cpuCount, cpuCount);
+        sb.append(getString(R.string.cpu_count) + ": " + cpuCores);
+        sb.append("\n");
         sb.append(getString(R.string.screen_size) + ": " + Utils.getScreenSize(mDisplayMetrics)
                 + " " + getString(R.string.inches));
         sb.append("\n");
@@ -129,6 +143,8 @@ public class HardwareInfoActivity extends Activity implements SensorEventListene
         sb.append(getString(R.string.ambient_temperature) + ": " + ((mAmbientTemperatureSensor != null)
                 ? mAmbientTemperature + getString(R.string.units_of_temperature)
                 : getString(R.string.not_available)));
+        sb.append("\n");
+        sb.append(getString(R.string.cpu_features) + ": " + getCpuFeaturesFromJNI());
         sb.append("\n");
         mResultText.setText(sb.toString());
     }

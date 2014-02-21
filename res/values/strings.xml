@@ -23,6 +23,9 @@
 <resources>
     <string name="app_name">Hardware Info</string>
     <string name="brand">Brand</string>
+    <string name="cpu_family">CPU Family</string>
+    <string name="cpu_count">CPU Count</string>
+    <string name="cpu_features">CPU Features</string>
     <string name="screen_size">Screen Size</string>
     <string name="inches">Inches</string>
     <string name="screen_resolution">Screen Resolution</string>
@@ -31,4 +34,10 @@
     <string name="ambient_temperature">Ambient Temperature</string>
     <string name="units_of_temperature">°C</string>
     <string name="not_available">N.A.</string>
+
+    <!-- Quantity Strings (Plurals) -->
+    <plurals name="cpu_cores">
+        <item quantity="one">%d core</item>
+        <item quantity="other">%d cores</item>
+    </plurals>
 </resources>
