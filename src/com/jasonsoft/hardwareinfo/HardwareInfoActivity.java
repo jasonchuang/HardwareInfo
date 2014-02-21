@@ -25,6 +25,7 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.os.AsyncTask;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -85,7 +86,7 @@ public class HardwareInfoActivity extends Activity implements SensorEventListene
             mSensorManager.registerListener(this, mAmbientTemperatureSensor, SensorManager.SENSOR_DELAY_NORMAL);
         }
 
-        updateResultText();
+        new UpdateHardwareInfoAsyncTask(mResultText).execute();
     }
 
     @Override
@@ -104,7 +105,7 @@ public class HardwareInfoActivity extends Activity implements SensorEventListene
             if (Intent.ACTION_BATTERY_CHANGED.equals(intent.getAction())) {
                 // temperature - int, current battery temperature in tenths of a degree Centigrade
                 mBatteryTemperature = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) / 10;
-                updateResultText();
+                new UpdateHardwareInfoAsyncTask(mResultText).execute();
             }
         }
     }
@@ -120,7 +121,7 @@ public class HardwareInfoActivity extends Activity implements SensorEventListene
         mAmbientTemperature = (int) event.values[0];
     }
 
-    private void updateResultText() {
+    private String getHardwareInfoResultText() {
         StringBuffer sb = new StringBuffer();
         sb.append(getString(R.string.brand) + ": " + Build.BRAND);
         sb.append("\n");
@@ -146,7 +147,32 @@ public class HardwareInfoActivity extends Activity implements SensorEventListene
         sb.append("\n");
         sb.append(getString(R.string.cpu_features) + ": " + getCpuFeaturesFromJNI());
         sb.append("\n");
-        mResultText.setText(sb.toString());
+        return sb.toString();
+    }
+
+    class UpdateHardwareInfoAsyncTask extends AsyncTask<Void, Void, String> {
+        private TextView mResultText;
+
+        public UpdateHardwareInfoAsyncTask(TextView resultText) {
+            this.mResultText = resultText;
+        }
+
+        protected void onPreExecute() {
+        }
+
+        @Override
+        protected String doInBackground(Void... params) {
+            return getHardwareInfoResultText();
+        }
+
+        @Override
+        protected void onProgressUpdate(Void... params) {
+        }
+
+        @Override
+        protected void onPostExecute(String result) {
+            mResultText.setText(result);
+        }
     }
 
 }
