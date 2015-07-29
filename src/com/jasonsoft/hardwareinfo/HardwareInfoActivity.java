@@ -45,7 +45,11 @@ public class HardwareInfoActivity extends Activity implements SensorEventListene
     private int mBatteryTemperature;
     private SensorManager mSensorManager;
     private Sensor mAmbientTemperatureSensor;
+    private Sensor mLightSensor;
+    private Sensor mRelativeHumiditySensor;
     private int mAmbientTemperature;
+    private int mLight;
+    private int mRelativeHumidity;
 
     static {
         System.loadLibrary("cpuinfo");
@@ -70,6 +74,8 @@ public class HardwareInfoActivity extends Activity implements SensorEventListene
         mBatteryStatusReceiver = new BatteryStatusReceiver();
         mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         mAmbientTemperatureSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_AMBIENT_TEMPERATURE);
+        mRelativeHumiditySensor = mSensorManager.getDefaultSensor(Sensor.TYPE_RELATIVE_HUMIDITY);
+        mLightSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_LIGHT);
     }
 
     /**
@@ -85,6 +91,12 @@ public class HardwareInfoActivity extends Activity implements SensorEventListene
         if (mAmbientTemperatureSensor != null) {
             mSensorManager.registerListener(this, mAmbientTemperatureSensor, SensorManager.SENSOR_DELAY_NORMAL);
         }
+        if (mRelativeHumiditySensor != null) {
+            mSensorManager.registerListener(this, mRelativeHumiditySensor, SensorManager.SENSOR_DELAY_NORMAL);
+        }
+        if (mLightSensor != null) {
+            mSensorManager.registerListener(this, mLightSensor, SensorManager.SENSOR_DELAY_NORMAL);
+        }
 
         new UpdateHardwareInfoAsyncTask(mResultText).execute();
     }
@@ -94,6 +106,12 @@ public class HardwareInfoActivity extends Activity implements SensorEventListene
         super.onPause();
         unregisterReceiver(mBatteryStatusReceiver);
         if (mAmbientTemperatureSensor != null) {
+            mSensorManager.unregisterListener(this);
+        }
+        if (mRelativeHumiditySensor != null) {
+            mSensorManager.unregisterListener(this);
+        }
+        if (mLightSensor != null) {
             mSensorManager.unregisterListener(this);
         }
     }
@@ -118,7 +136,21 @@ public class HardwareInfoActivity extends Activity implements SensorEventListene
     @Override
     public final void onSensorChanged(SensorEvent event) {
         // °C, Ambient air temperature.
-        mAmbientTemperature = (int) event.values[0];
+
+        switch (event.sensor.getType()) {
+        case Sensor.TYPE_AMBIENT_TEMPERATURE:
+            mAmbientTemperature = (int) event.values[0];
+            break;
+        case Sensor.TYPE_RELATIVE_HUMIDITY:
+            mRelativeHumidity = (int) event.values[0];
+            break;
+        case Sensor.TYPE_LIGHT:
+            mLight = (int) event.values[0];
+            break;
+
+        default:
+            break;
+        }
     }
 
     private String getHardwareInfoResultText() {
@@ -136,6 +168,9 @@ public class HardwareInfoActivity extends Activity implements SensorEventListene
         sb.append("\n");
         sb.append(getString(R.string.screen_resolution) + ": " + Utils.getScreenResolution(mDisplayMetrics));
         sb.append("\n");
+        sb.append(getString(R.string.screen_density) + ": " + Utils.getScreenDensity(mDisplayMetrics,
+                    getString(R.string.units_of_screen_density)));
+        sb.append("\n");
         sb.append(getString(R.string.camera_pixels) + ": " + Utils.getCameraPixels());
         sb.append("\n");
         sb.append(getString(R.string.battery_temperature) + ": " + mBatteryTemperature +
@@ -145,8 +180,17 @@ public class HardwareInfoActivity extends Activity implements SensorEventListene
                 ? mAmbientTemperature + getString(R.string.units_of_temperature)
                 : getString(R.string.not_available)));
         sb.append("\n");
+        sb.append(getString(R.string.relative_humidity) + ": " + ((mRelativeHumiditySensor != null)
+                ? mRelativeHumidity + getString(R.string.units_of_relative_humidity)
+                : getString(R.string.not_available)));
+        sb.append("\n");
+        sb.append(getString(R.string.light) + ": " + ((mLightSensor != null)
+                ? mLight + getString(R.string.units_of_light)
+                : getString(R.string.not_available)));
+        sb.append("\n");
         sb.append(getString(R.string.cpu_features) + ": " + getCpuFeaturesFromJNI());
         sb.append("\n");
+
         return sb.toString();
     }
 

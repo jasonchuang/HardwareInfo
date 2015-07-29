@@ -69,6 +69,31 @@ public class Utils {
         return height + " * " + width;
     }
 
+    public static String getScreenDensity(DisplayMetrics dm, String densityUnit) {
+        String densityCategory = "";
+        int density = (int) (dm.density * DisplayMetrics.DENSITY_MEDIUM);
+
+        switch(density) {
+        case DisplayMetrics.DENSITY_MEDIUM:
+            densityCategory = "m";
+            break;
+        case DisplayMetrics.DENSITY_HIGH:
+            densityCategory = "h";
+            break;
+        case DisplayMetrics.DENSITY_XHIGH:
+            densityCategory = "xh";
+            break;
+        case DisplayMetrics.DENSITY_XXHIGH:
+            densityCategory = "xxh";
+            break;
+        case DisplayMetrics.DENSITY_TV:
+            densityCategory = "tv";
+            break;
+        }
+
+        return densityCategory + densityUnit + " (" + density + ")";
+    }
+
     public static String getCameraPixels() {
         // Open Camera
         Camera camera = Camera.open();
