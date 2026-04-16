@@ -1,0 +1,31 @@
+{
+  "name": "electron-md-viewer",
+  "version": "1.0.0",
+  "description": "A simple Markdown viewer for macOS built with Electron",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "^29.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "dependencies": {
+    "marked": "^12.0.0"
+  },
+  "build": {
+    "appId": "com.example.electron-md-viewer",
+    "productName": "MD Viewer",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": ["dmg", "zip"]
+    },
+    "files": [
+      "main.js",
+      "renderer.js",
+      "index.html",
+      "node_modules/**/*"
+    ]
+  }
+}
