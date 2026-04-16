@@ -1,13 +1,9 @@
 // renderer.js — runs in the browser context (no direct Node access)
 // Uses window.electronAPI exposed by preload.js
+// marked is loaded via <script> tag in index.html (no require in contextIsolation)
 
-const { marked } = require('marked')  // bundled via node_modules in dev; or use CDN
-
-// Configure marked options
-marked.setOptions({
-  gfm: true,        // GitHub Flavored Markdown
-  breaks: true,     // convert \n to <br>
-})
+// Configure marked for GFM + line breaks (marked v5+ API)
+marked.use({ gfm: true, breaks: true })
 
 const dropzone  = document.getElementById('dropzone')
 const preview   = document.getElementById('preview')
