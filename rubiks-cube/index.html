@@ -110,7 +110,7 @@
 
 <header>
   <h1>3D 魔術方塊</h1>
-  <p>拖曳畫面旋轉視角</p>
+  <p>拖曳方塊表面轉動該層;拖曳背景旋轉視角</p>
 </header>
 
 <div class="scene" id="scene">
@@ -179,6 +179,7 @@
   ];
 
   var cubies = [];
+  var faceInfo = new WeakMap(); // face 元素 → { cubie, local(局部法向量) }
 
   for (var x = -1; x <= 1; x++)
     for (var y = -1; y <= 1; y++)
@@ -186,14 +187,20 @@
         var el = document.createElement('div');
         el.className = 'cubie';
         var pos = [x, y, z];
+        var cubie = { el: el, pos: pos, orient: identity(), stickers: [] };
         FACES.forEach(function (f) {
+          var outer = pos[f.axis] === f.sign;
           var face = document.createElement('div');
-          face.className = 'face' + (pos[f.axis] === f.sign ? ' ' + f.cls : '');
+          face.className = 'face' + (outer ? ' ' + f.cls : '');
           face.style.transform = f.css + ' translateZ(' + HALF + 'px)';
+          var local = [0, 0, 0];
+          local[f.axis] = f.sign;
+          faceInfo.set(face, { cubie: cubie, local: local });
+          if (outer) cubie.stickers.push({ local: local, color: f.cls });
           el.appendChild(face);
         });
         cubeEl.appendChild(el);
-        cubies.push({ el: el, pos: pos, orient: identity() });
+        cubies.push(cubie);
       }
 
   function cubieTransform(c, prefix) {
@@ -218,24 +225,87 @@
     cubeEl.style.transform = 'rotateX(' + viewX + 'deg) rotateY(' + viewY + 'deg)';
   }
 
-  var dragging = false, lastX = 0, lastY = 0;
+  // 世界向量 → 螢幕方向(套用與 .cube 相同的 rotateX(viewX) rotateY(viewY),忽略透視)
+  function screenDir(v) {
+    var ry = viewY * Math.PI / 180, rx = viewX * Math.PI / 180;
+    var x = v[0] * Math.cos(ry) + v[2] * Math.sin(ry);
+    var y = v[1];
+    var z = -v[0] * Math.sin(ry) + v[2] * Math.cos(ry);
+    return [x, y * Math.cos(rx) - z * Math.sin(rx)];
+  }
+
+  function cross(a, b) {
+    return [a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]];
+  }
+
+  var drag = null; // {mode:'view'} 或 {mode:'turn', cubie, normal, startX, startY, done}
 
   sceneEl.addEventListener('pointerdown', function (e) {
-    dragging = true;
+    var info = faceInfo.get(e.target);
+    if (info && !animating && queue.length === 0) {
+      drag = {
+        mode: 'turn',
+        cubie: info.cubie,
+        normal: matVec(info.cubie.orient, info.local), // 目前的世界法向量
+        startX: e.clientX, startY: e.clientY,
+        done: false
+      };
+    } else {
+      drag = { mode: 'view' };
+      sceneEl.classList.add('dragging');
+    }
     lastX = e.clientX; lastY = e.clientY;
-    sceneEl.classList.add('dragging');
     sceneEl.setPointerCapture(e.pointerId);
   });
+
+  var lastX = 0, lastY = 0;
+
   sceneEl.addEventListener('pointermove', function (e) {
-    if (!dragging) return;
-    viewY += (e.clientX - lastX) * 0.4;
-    viewX -= (e.clientY - lastY) * 0.4;
-    viewX = Math.max(-90, Math.min(90, viewX));
-    lastX = e.clientX; lastY = e.clientY;
-    renderView();
+    if (!drag) return;
+
+    if (drag.mode === 'view') {
+      viewY += (e.clientX - lastX) * 0.4;
+      viewX -= (e.clientY - lastY) * 0.4;
+      viewX = Math.max(-90, Math.min(90, viewX));
+      lastX = e.clientX; lastY = e.clientY;
+      renderView();
+      return;
+    }
+
+    if (drag.done) return;
+    var dx = e.clientX - drag.startX, dy = e.clientY - drag.startY;
+    if (dx * dx + dy * dy < 15 * 15) return; // 拖曳距離門檻
+
+    // 在貼紙平面上找出與拖曳方向最一致的切線方向 t
+    var n = drag.normal;
+    var nAxis = n[0] !== 0 ? 0 : (n[1] !== 0 ? 1 : 2);
+    var best = null, bestScore = -Infinity;
+    for (var axis = 0; axis < 3; axis++) {
+      if (axis === nAxis) continue;
+      for (var s = -1; s <= 1; s += 2) {
+        var t = [0, 0, 0];
+        t[axis] = s;
+        var p = screenDir(t);
+        var score = p[0] * dx + p[1] * dy;
+        if (score > bestScore) { bestScore = score; best = t; }
+      }
+    }
+
+    // 繞軸 a = n × t 轉 +90° 時,貼紙會朝 t 方向移動
+    var a = cross(n, best);
+    var aAxis = a[0] !== 0 ? 0 : (a[1] !== 0 ? 1 : 2);
+    drag.done = true;
+    enqueue({
+      axis: 'xyz'[aAxis],
+      layer: drag.cubie.pos[aAxis],
+      dir: a[aAxis],
+      record: true,
+      ms: MOVE_MS
+    });
   });
+
   sceneEl.addEventListener('pointerup', function () {
-    dragging = false;
+    drag = null;
     sceneEl.classList.remove('dragging');
   });
 
@@ -249,10 +319,29 @@
 
   function easeInOut(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2; }
 
+  // 檢查是否已還原:每個朝向上的所有貼紙顏色一致
+  function isSolved() {
+    var colorByDir = {};
+    for (var i = 0; i < cubies.length; i++) {
+      var c = cubies[i];
+      for (var j = 0; j < c.stickers.length; j++) {
+        var s = c.stickers[j];
+        var key = matVec(c.orient, s.local).join(',');
+        if (!(key in colorByDir)) colorByDir[key] = s.color;
+        else if (colorByDir[key] !== s.color) return false;
+      }
+    }
+    return true;
+  }
+
   function runQueue() {
     if (animating) return;
     var move = queue.shift();
-    if (!move) { updateUI(); return; }
+    if (!move) {
+      if (history.length && isSolved()) history = [];
+      updateUI();
+      return;
+    }
     animating = true;
     updateUI();
 
@@ -327,7 +416,7 @@
     solveBtn.disabled = busy || history.length === 0;
     statusEl.textContent = busy
       ? '轉動中…(剩餘 ' + (queue.length + 1) + ' 步)'
-      : (history.length ? '已打亂 ' + history.length + ' 步,按 Solve 還原' : '已還原');
+      : (history.length ? '已轉 ' + history.length + ' 步,按 Solve 還原' : '已還原');
   }
 
   render();
