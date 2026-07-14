@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D 魔術方塊</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    font-family: "Segoe UI", "Noto Sans TC", system-ui, sans-serif;
+    background: radial-gradient(ellipse at center, #2b3a55 0%, #10182b 100%);
+    color: #e8ecf4;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+
+  header {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    padding: 18px 24px;
+    text-align: center;
+    z-index: 10;
+    pointer-events: none;
+  }
+  header h1 { font-size: 22px; font-weight: 600; letter-spacing: 2px; }
+  header p  { font-size: 13px; opacity: .65; margin-top: 4px; }
+
+  .scene {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    perspective: 1200px;
+    cursor: grab;
+  }
+  .scene.dragging { cursor: grabbing; }
+
+  .cube {
+    position: relative;
+    width: 0; height: 0;
+    transform-style: preserve-3d;
+  }
+
+  .cubie {
+    position: absolute;
+    width: 96px; height: 96px;
+    margin: -48px 0 0 -48px;
+    transform-style: preserve-3d;
+  }
+
+  .face {
+    position: absolute;
+    width: 96px; height: 96px;
+    border-radius: 10px;
+    border: 5px solid #0a0e18;
+    background: #1a2233;
+  }
+  .face.R { background: #e33b3b; }
+  .face.L { background: #f5871f; }
+  .face.U { background: #f4f6fb; }
+  .face.D { background: #f7d21e; }
+  .face.F { background: #2fbf4f; }
+  .face.B { background: #2f6fe0; }
+
+  .controls {
+    position: fixed;
+    bottom: 32px; left: 0; right: 0;
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    z-index: 10;
+  }
+
+  button {
+    padding: 12px 34px;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: #fff;
+    border: none;
+    border-radius: 30px;
+    cursor: pointer;
+    transition: transform .12s ease, box-shadow .12s ease, opacity .12s ease;
+    box-shadow: 0 6px 18px rgba(0,0,0,.35);
+  }
+  button:hover:not(:disabled) { transform: translateY(-2px); }
+  button:active:not(:disabled) { transform: translateY(0); }
+  button:disabled { opacity: .45; cursor: default; }
+
+  #scrambleBtn { background: linear-gradient(135deg, #ff7847, #e33b3b); }
+  #solveBtn    { background: linear-gradient(135deg, #34c46a, #1f8fd6); }
+
+  #status {
+    position: fixed;
+    bottom: 96px; left: 0; right: 0;
+    text-align: center;
+    font-size: 13px;
+    opacity: .7;
+    z-index: 10;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>3D 魔術方塊</h1>
+  <p>拖曳畫面旋轉視角</p>
+</header>
+
+<div class="scene" id="scene">
+  <div class="cube" id="cube"></div>
+</div>
+
+<div id="status"></div>
+
+<div class="controls">
+  <button id="scrambleBtn">Scramble</button>
+  <button id="solveBtn">Solve</button>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var STEP = 104;          // 每個小方塊的間距 (px)
+  var HALF = 48;           // 面片位移 = 小方塊尺寸的一半
+  var MOVE_MS = 220;       // 單步轉動時間
+  var SOLVE_MS = 130;      // 還原時每步較快
+  var SCRAMBLE_COUNT = 20; // 打亂步數
+
+  var cubeEl = document.getElementById('cube');
+  var sceneEl = document.getElementById('scene');
+  var scrambleBtn = document.getElementById('scrambleBtn');
+  var solveBtn = document.getElementById('solveBtn');
+  var statusEl = document.getElementById('status');
+
+  // ---- 3x3 整數旋轉矩陣工具 --------------------------------------------
+  // 座標系與 CSS 相同:x 向右、y 向下、z 朝向觀察者。
+  function identity() { return [1,0,0, 0,1,0, 0,0,1]; }
+
+  function matMul(a, b) {
+    var r = new Array(9);
+    for (var i = 0; i < 3; i++)
+      for (var j = 0; j < 3; j++)
+        r[i*3+j] = a[i*3]*b[j] + a[i*3+1]*b[3+j] + a[i*3+2]*b[6+j];
+    return r;
+  }
+
+  function matVec(m, v) {
+    return [
+      m[0]*v[0] + m[1]*v[1] + m[2]*v[2],
+      m[3]*v[0] + m[4]*v[1] + m[5]*v[2],
+      m[6]*v[0] + m[7]*v[1] + m[8]*v[2]
+    ];
+  }
+
+  // 與 CSS rotateX/rotateY/rotateZ(90deg * dir) 一致的整數矩陣
+  function rotMatrix(axis, dir) {
+    if (axis === 'x') return [1,0,0, 0,0,-dir, 0,dir,0];
+    if (axis === 'y') return [0,0,dir, 0,1,0, -dir,0,0];
+    return [0,-dir,0, dir,0,0, 0,0,1]; // z
+  }
+
+  // ---- 建立 27 個小方塊 --------------------------------------------------
+  // 面的顏色依「初始位置」決定;方向矩陣會把貼紙一起帶著轉。
+  var FACES = [
+    { cls: 'R', axis: 0, sign:  1, css: 'rotateY(90deg)'  },
+    { cls: 'L', axis: 0, sign: -1, css: 'rotateY(-90deg)' },
+    { cls: 'D', axis: 1, sign:  1, css: 'rotateX(-90deg)' },
+    { cls: 'U', axis: 1, sign: -1, css: 'rotateX(90deg)'  },
+    { cls: 'F', axis: 2, sign:  1, css: ''                },
+    { cls: 'B', axis: 2, sign: -1, css: 'rotateY(180deg)' }
+  ];
+
+  var cubies = [];
+
+  for (var x = -1; x <= 1; x++)
+    for (var y = -1; y <= 1; y++)
+      for (var z = -1; z <= 1; z++) {
+        var el = document.createElement('div');
+        el.className = 'cubie';
+        var pos = [x, y, z];
+        FACES.forEach(function (f) {
+          var face = document.createElement('div');
+          face.className = 'face' + (pos[f.axis] === f.sign ? ' ' + f.cls : '');
+          face.style.transform = f.css + ' translateZ(' + HALF + 'px)';
+          el.appendChild(face);
+        });
+        cubeEl.appendChild(el);
+        cubies.push({ el: el, pos: pos, orient: identity() });
+      }
+
+  function cubieTransform(c, prefix) {
+    var m = c.orient;
+    var t = 'translate3d(' + (c.pos[0]*STEP) + 'px,' + (c.pos[1]*STEP) + 'px,' + (c.pos[2]*STEP) + 'px)';
+    var r = 'matrix3d(' +
+      m[0] + ',' + m[3] + ',' + m[6] + ',0,' +
+      m[1] + ',' + m[4] + ',' + m[7] + ',0,' +
+      m[2] + ',' + m[5] + ',' + m[8] + ',0,' +
+      '0,0,0,1)';
+    return (prefix || '') + ' ' + t + ' ' + r;
+  }
+
+  function render() {
+    cubies.forEach(function (c) { c.el.style.transform = cubieTransform(c); });
+  }
+
+  // ---- 視角拖曳 ----------------------------------------------------------
+  var viewX = -28, viewY = -38;
+
+  function renderView() {
+    cubeEl.style.transform = 'rotateX(' + viewX + 'deg) rotateY(' + viewY + 'deg)';
+  }
+
+  var dragging = false, lastX = 0, lastY = 0;
+
+  sceneEl.addEventListener('pointerdown', function (e) {
+    dragging = true;
+    lastX = e.clientX; lastY = e.clientY;
+    sceneEl.classList.add('dragging');
+    sceneEl.setPointerCapture(e.pointerId);
+  });
+  sceneEl.addEventListener('pointermove', function (e) {
+    if (!dragging) return;
+    viewY += (e.clientX - lastX) * 0.4;
+    viewX -= (e.clientY - lastY) * 0.4;
+    viewX = Math.max(-90, Math.min(90, viewX));
+    lastX = e.clientX; lastY = e.clientY;
+    renderView();
+  });
+  sceneEl.addEventListener('pointerup', function () {
+    dragging = false;
+    sceneEl.classList.remove('dragging');
+  });
+
+  // ---- 轉動一層 ----------------------------------------------------------
+  var queue = [];        // 待執行的轉動 {axis, layer, dir, record, ms}
+  var animating = false;
+  var history = [];      // 已套用且未還原的轉動
+
+  var AXIS_CSS = { x: 'rotateX', y: 'rotateY', z: 'rotateZ' };
+  var AXIS_IDX = { x: 0, y: 1, z: 2 };
+
+  function easeInOut(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2; }
+
+  function runQueue() {
+    if (animating) return;
+    var move = queue.shift();
+    if (!move) { updateUI(); return; }
+    animating = true;
+    updateUI();
+
+    var idx = AXIS_IDX[move.axis];
+    var affected = cubies.filter(function (c) { return c.pos[idx] === move.layer; });
+    var start = null;
+
+    function frame(ts) {
+      if (start === null) start = ts;
+      var t = Math.min(1, (ts - start) / move.ms);
+      var angle = easeInOut(t) * 90 * move.dir;
+      var prefix = AXIS_CSS[move.axis] + '(' + angle + 'deg)';
+      affected.forEach(function (c) {
+        c.el.style.transform = cubieTransform(c, prefix);
+      });
+      if (t < 1) {
+        requestAnimationFrame(frame);
+      } else {
+        var R = rotMatrix(move.axis, move.dir);
+        affected.forEach(function (c) {
+          c.pos = matVec(R, c.pos);
+          c.orient = matMul(R, c.orient);
+          c.el.style.transform = cubieTransform(c);
+        });
+        if (move.record) history.push(move);
+        animating = false;
+        runQueue();
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function enqueue(move) {
+    queue.push(move);
+    runQueue();
+  }
+
+  // ---- Scramble / Solve --------------------------------------------------
+  var AXES = ['x', 'y', 'z'];
+
+  scrambleBtn.addEventListener('click', function () {
+    var prevAxis = null, prevLayer = null;
+    for (var i = 0; i < SCRAMBLE_COUNT; i++) {
+      var axis, layer;
+      do {
+        axis = AXES[Math.floor(Math.random() * 3)];
+        layer = Math.floor(Math.random() * 3) - 1;
+      } while (axis === prevAxis && layer === prevLayer);
+      prevAxis = axis; prevLayer = layer;
+      enqueue({
+        axis: axis,
+        layer: layer,
+        dir: Math.random() < 0.5 ? 1 : -1,
+        record: true,
+        ms: MOVE_MS
+      });
+    }
+  });
+
+  solveBtn.addEventListener('click', function () {
+    if (!history.length) return;
+    var moves = history.slice().reverse();
+    history = [];
+    moves.forEach(function (m) {
+      enqueue({ axis: m.axis, layer: m.layer, dir: -m.dir, record: false, ms: SOLVE_MS });
+    });
+  });
+
+  function updateUI() {
+    var busy = animating || queue.length > 0;
+    scrambleBtn.disabled = busy;
+    solveBtn.disabled = busy || history.length === 0;
+    statusEl.textContent = busy
+      ? '轉動中…(剩餘 ' + (queue.length + 1) + ' 步)'
+      : (history.length ? '已打亂 ' + history.length + ' 步,按 Solve 還原' : '已還原');
+  }
+
+  render();
+  renderView();
+  updateUI();
+})();
+</script>
+</body>
+</html>
